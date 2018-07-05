@@ -5,6 +5,8 @@ const server = express();
 const html = `
   <html>
     <head>
+      <link rel="stylesheet" href="styles.css">
+      <link rel="stylesheet" href="main.css">
     </head>
     <body>
       <div id="root"></div>
