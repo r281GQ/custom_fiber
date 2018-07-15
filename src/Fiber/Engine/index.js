@@ -23,9 +23,11 @@ let renderInfo = null;
 
 const commitWork = effect => {
   if (effect.effectTag === PLACEMENT) {
-    const domNodeToAppend = effect.parent.stateNode;
+    const parentNode = effect.parent.stateNode;
+    const domNode = effect.stateNode;
 
-    domNodeToAppend.appendChild(effect.stateNode);
+    updateDomProperties(domNode, {}, effect.props);
+    parentNode.appendChild(domNode);
   }
 
   if (effect.effectTag === UPDATE) {

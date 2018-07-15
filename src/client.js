@@ -29,8 +29,10 @@ setTimeout(() => {
 
 const otherElement2 = (
   <div style={{ backgroundColor: 'red' }}>
-    <div second={true}>hi</div>
-    <div>third</div>
+    <div second={true} onClick={e => console.log(e)}>
+      hi
+    </div>
+    <div style={{ backgroundColor: 'purple' }}>third</div>
   </div>
 );
 
