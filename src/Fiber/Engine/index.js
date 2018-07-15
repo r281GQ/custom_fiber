@@ -1,30 +1,66 @@
+import uuid from 'uuid';
+
 import { createElement } from './../CreateElement';
 import { effects, fiberTypes, timeLimits } from './../Misc/Consts';
 import { convertValueToArray } from '../Misc/Functions';
+import { updateDomProperties } from '../Diffing/updateDomProps';
 import createQueue from './../Misc/Queue';
+import createSubscription from './../Misc/Subscription';
 
-const { PLACEMENT } = effects;
+const { PLACEMENT, UPDATE, DELETION } = effects;
 const { CLASS_COMPONENT, HOST_COMPONENT, HOST_ROOT } = fiberTypes;
 const { ENOUGH_TIME } = timeLimits;
 
 // this hold all the tasks which can either come from render or setState
 const updateQueue = createQueue();
 
+const subscription = createSubscription();
+
 //this is the subtask which needs to be executed next time the main thread some spare time
 let nextSubTask = null;
 let pendingCommit = null;
+let renderInfo = null;
 
 const commitWork = effect => {
-  const domNodeToAppend = effect.parent.stateNode;
+  if (effect.effectTag === PLACEMENT) {
+    const domNodeToAppend = effect.parent.stateNode;
 
-  domNodeToAppend.appendChild(effect.stateNode);
+    domNodeToAppend.appendChild(effect.stateNode);
+  }
+
+  if (effect.effectTag === UPDATE) {
+    const domNode = effect.stateNode;
+
+    if (effect.parent !== effect.alternate.parent) {
+      const newParent = effect.parent.stateNode;
+
+      newParent.appendChild(domNode);
+    }
+
+    updateDomProperties(domNode, effect.alternate.props, effect.props);
+  }
+
+  if (effect.effectTag === DELETION) {
+    const domNodeToAppend = effect.parent.stateNode;
+
+    domNodeToAppend.removeChild(effect.stateNode);
+  }
 };
 
 const commitAllWork = rootFiber => {
   rootFiber.effects.forEach(commitWork);
 
+  // console.log(rootFiber.effects);
+
+  // saves the reference of itself in a field, so
+  // the alternate tree can be set up later
+  rootFiber.stateNode.__rootContainerFiber = rootFiber;
+
+  subscription.invoke(renderInfo);
+
   nextSubTask = null;
   pendingCommit = null;
+  renderInfo = null;
 };
 
 const performTask = deadline => {
@@ -43,6 +79,8 @@ const assignFirstSubtask = () => {
     // means nothing to do
     return null;
   }
+
+  renderInfo = taskToExecute;
 
   const { from, dom, newProps } = taskToExecute;
 
@@ -63,33 +101,92 @@ function reconcileChildrenArray(fiberBeingExecuted, newChildElements) {
 
   let index = 0;
   let previusFiber = null;
+  let alternateFiber = fiberBeingExecuted.alternate
+    ? fiberBeingExecuted.alternate.child
+    : null;
   const numberOfElements = elements.length;
 
-  while (index < numberOfElements) {
-    const { type, props } = elements[index];
-    let fiberToCreate = {
-      tag: HOST_COMPONENT,
-      type: type,
-      parent: fiberBeingExecuted,
-      child: null,
-      sibling: null,
-      alternate: null,
-      stateNode:
-        type === 'TEXT ELEMENT'
-          ? document.createTextNode(props.nodeValue)
-          : document.createElement(type),
-      props,
-      partialState: null,
-      effectTag: PLACEMENT,
-      effects: []
-    };
+  while (index < numberOfElements || alternateFiber) {
+    const element = elements[index];
 
-    if (index !== 0) {
-      previusFiber.sibling = fiberToCreate;
-      previusFiber = fiberToCreate;
-    } else {
+    if (!element && alternateFiber) {
+      alternateFiber.effectTag = DELETION;
+      fiberBeingExecuted.effects = fiberBeingExecuted.effects || [];
+      fiberBeingExecuted.effects.push(alternateFiber);
+    }
+
+    let fiberToCreate = null;
+
+    if (element && alternateFiber && alternateFiber.type === element.type) {
+      fiberToCreate = {
+        tag: HOST_COMPONENT,
+        type: element.type,
+        parent: fiberBeingExecuted,
+        child: null,
+        sibling: null,
+        alternate: alternateFiber,
+        stateNode: alternateFiber.stateNode,
+        props: element.props,
+        partialState: null,
+        effectTag: UPDATE,
+        effects: []
+      };
+    }
+
+    if (element && alternateFiber && alternateFiber.type !== element.type) {
+      fiberToCreate = {
+        tag: HOST_COMPONENT,
+        type: element.type,
+        parent: fiberBeingExecuted,
+        child: null,
+        sibling: null,
+        alternate: alternateFiber,
+        stateNode:
+          element.type === 'TEXT ELEMENT'
+            ? document.createTextNode(element.props.nodeValue)
+            : document.createElement(element.type),
+        props: element.props,
+        partialState: null,
+        effectTag: PLACEMENT,
+        effects: []
+      };
+
+      alternateFiber.effectTag = DELETION;
+
+      fiberBeingExecuted.effects.push(alternateFiber);
+    }
+
+    if (element && !alternateFiber) {
+      fiberToCreate = {
+        tag: HOST_COMPONENT,
+        type: element.type,
+        parent: fiberBeingExecuted,
+        child: null,
+        sibling: null,
+        alternate: null,
+        stateNode:
+          element.type === 'TEXT ELEMENT'
+            ? document.createTextNode(element.props.nodeValue)
+            : document.createElement(element.type),
+        props: element.props,
+        partialState: null,
+        effectTag: PLACEMENT,
+        effects: []
+      };
+    }
+
+    if (index == 0) {
       fiberBeingExecuted.child = fiberToCreate;
-      previusFiber = fiberToCreate;
+    } else if (previusFiber && element) {
+      previusFiber.sibling = fiberToCreate;
+    }
+
+    previusFiber = fiberToCreate;
+
+    if (alternateFiber && alternateFiber.sibling) {
+      alternateFiber = alternateFiber.sibling;
+    } else {
+      alternateFiber = null;
     }
 
     index++;
@@ -97,10 +194,6 @@ function reconcileChildrenArray(fiberBeingExecuted, newChildElements) {
 }
 
 function beginTask(fiberBeingExecuted) {
-  // if (!taskBeingExecuted.stateNode) {
-  //   taskBeingExecuted.stateNode = createDomElement(taskBeingExecuted);
-  // }
-
   const newChildElements = fiberBeingExecuted.props.children;
   reconcileChildrenArray(fiberBeingExecuted, newChildElements);
 }
@@ -111,7 +204,7 @@ const completeSubTask = fiberBeingExecuted => {
   // propogating the effects up in the tree
   if (parent) {
     const ownEffect = effectTag ? [fiberBeingExecuted] : [];
-    const propogatedEffects = [...effects];
+    const propogatedEffects = effects ? [...effects] : [];
     const mergedEffects = [...propogatedEffects, ...ownEffect];
 
     parent.effects = parent.effects
@@ -178,15 +271,16 @@ function workLoop(deadline) {
   }
 }
 
-export function render(elements, containerDom) {
+export const render = (elements, containerDom) => {
   updateQueue.push({
+    id: uuid(),
     from: HOST_ROOT,
     dom: containerDom,
     newProps: { children: elements }
   });
 
   requestIdleCallback(performTask);
-}
+};
 
 function scheduleUpdate(instance, partialState) {
   updateQueue.push({
@@ -197,4 +291,4 @@ function scheduleUpdate(instance, partialState) {
   requestIdleCallback(performTask);
 }
 
-export default { createElement, render };
+export const subscribeToRenderCommit = fn => subscription.subscribe(fn);

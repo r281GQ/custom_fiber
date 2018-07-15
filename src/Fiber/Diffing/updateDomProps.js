@@ -1,60 +1,6 @@
-const isEvent = name => name.startsWith('on');
-const isAttribute = name =>
-  !isEvent(name) && name != 'children' && name != 'style';
-const isNew = (prev, next) => key => prev[key] !== next[key];
-const isGone = (prev, next) => key => !(key in next);
+const TEXT_ELEMENT = 'TEXT ELEMENT';
 
-export function updateDomProperties(dom, prevProps, nextProps) {
-  // Remove event listeners
-  Object.keys(prevProps)
-    .filter(isEvent)
-    .filter(key => !(key in nextProps) || isNew(prevProps, nextProps)(key))
-    .forEach(name => {
-      const eventType = name.toLowerCase().substring(2);
-      dom.removeEventListener(eventType, prevProps[name]);
-    });
-
-  // Remove attributes
-  Object.keys(prevProps)
-    .filter(isAttribute)
-    .filter(isGone(prevProps, nextProps))
-    .forEach(name => {
-      dom[name] = null;
-    });
-
-  // Set attributes
-  Object.keys(nextProps)
-    .filter(isAttribute)
-    .filter(isNew(prevProps, nextProps))
-    .forEach(name => {
-      dom[name] = nextProps[name];
-    });
-
-  // Set style
-  prevProps.style = prevProps.style || {};
-  nextProps.style = nextProps.style || {};
-  Object.keys(nextProps.style)
-    .filter(isNew(prevProps.style, nextProps.style))
-    .forEach(key => {
-      dom.style[key] = nextProps.style[key];
-    });
-  Object.keys(prevProps.style)
-    .filter(isGone(prevProps.style, nextProps.style))
-    .forEach(key => {
-      dom.style[key] = '';
-    });
-
-  // Add event listeners
-  Object.keys(nextProps)
-    .filter(isEvent)
-    .filter(isNew(prevProps, nextProps))
-    .forEach(name => {
-      const eventType = name.toLowerCase().substring(2);
-      dom.addEventListener(eventType, nextProps[name]);
-    });
-}
-
-function createDomElement(fiber) {
+export function createDomElement(fiber) {
   const isTextElement = fiber.type === TEXT_ELEMENT;
   const dom = isTextElement
     ? document.createTextNode('')
@@ -62,3 +8,58 @@ function createDomElement(fiber) {
   updateDomProperties(dom, [], fiber.props);
   return dom;
 }
+
+export const updateDomProperties = (stateNode, oldProps, newProps) => {
+  const oldPropsNames = Object.keys(oldProps);
+  const newPropsNames = Object.keys(newProps);
+
+  const isEventListener = prop => prop.startsWith('on');
+
+  const isNotEventListener = prop => !prop.startsWith('on');
+
+  const addEventListener = (stateNode, props) => prop =>
+    stateNode.addEventListener(prop.substring(2).toLowerCase(), props[prop]);
+
+  const removeEventListener = (stateNode, props) => prop =>
+    stateNode.removeEventListener(prop.substring(2).toLowerCase(), props[prop]);
+
+  oldPropsNames
+    .filter(isEventListener)
+    .forEach(removeEventListener(stateNode, oldProps));
+
+  newPropsNames
+    .filter(isEventListener)
+    .forEach(addEventListener(stateNode, newProps));
+
+  const oldStyleName = Object.keys(oldProps.style || {});
+
+  oldStyleName.forEach(style => {
+    stateNode.style[style] = '';
+  });
+
+  const newStylenames = Object.keys(newProps.style || {});
+
+  newStylenames.forEach(style => {
+    stateNode.style[style] = newProps.style[style];
+  });
+
+  const notChildrenOrStyle = prop => !/children|style/.test(prop);
+
+  const removeProp = stateNode => propName => {
+    stateNode[propName] = null;
+  };
+
+  const addProp = (stateNode, newProps) => propName => {
+    stateNode[propName] = newProps[propName];
+  };
+
+  oldPropsNames
+    .filter(isNotEventListener)
+    .filter(notChildrenOrStyle)
+    .forEach(removeProp(stateNode));
+
+  newPropsNames
+    .filter(isNotEventListener)
+    .filter(notChildrenOrStyle)
+    .forEach(addProp(stateNode, newProps));
+};
