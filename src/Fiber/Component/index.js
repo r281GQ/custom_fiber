@@ -5,12 +5,6 @@ export class Component {
   }
 
   setState(partialState) {
-    scheduleUpdate(this, partialState);
+    // scheduleUpdate(this, partialState);
   }
-}
-
-function createInstance(fiber) {
-  const instance = new fiber.type(fiber.props);
-  instance.__fiber = fiber;
-  return instance;
 }

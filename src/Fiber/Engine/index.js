@@ -6,6 +6,7 @@ import { convertValueToArray } from '../Misc/Functions';
 import { updateDomProperties } from '../Diffing/updateDomProps';
 import createQueue from './../Misc/Queue';
 import createSubscription from './../Misc/Subscription';
+import createInstance from '../CreateInstance';
 
 const { PLACEMENT, UPDATE, DELETION } = effects;
 const { CLASS_COMPONENT, HOST_COMPONENT, HOST_ROOT } = fiberTypes;
@@ -23,11 +24,20 @@ let renderInfo = null;
 
 const commitWork = effect => {
   if (effect.effectTag === PLACEMENT) {
-    const parentNode = effect.parent.stateNode;
-    const domNode = effect.stateNode;
+    let currentParentEffect = effect.parent;
+    let currentEffect = effect;
 
-    updateDomProperties(domNode, {}, effect.props);
-    parentNode.appendChild(domNode);
+    while (currentParentEffect.tag === CLASS_COMPONENT) {
+      currentParentEffect = currentParentEffect.parent;
+    }
+
+    const parentNode = currentParentEffect.stateNode;
+    const domNode = currentEffect.stateNode;
+
+    if (currentEffect.tag === HOST_COMPONENT) {
+      updateDomProperties(domNode, {}, currentEffect.props);
+      parentNode.appendChild(domNode);
+    }
   }
 
   if (effect.effectTag === UPDATE) {
@@ -43,16 +53,51 @@ const commitWork = effect => {
   }
 
   if (effect.effectTag === DELETION) {
-    const domNodeToAppend = effect.parent.stateNode;
+    let currentParentEffect = effect.parent;
+    let currentEffect = effect;
 
-    domNodeToAppend.removeChild(effect.stateNode);
+    while (currentParentEffect.tag === CLASS_COMPONENT) {
+      currentParentEffect = currentParentEffect.parent;
+    }
+
+    while (currentEffect.tag === CLASS_COMPONENT) {
+      currentEffect = currentEffect.child;
+    }
+
+    const parentNode = currentParentEffect.stateNode;
+    const domNode = currentEffect.stateNode;
+
+    // let f = true;
+
+    // while (f) {
+    //   if (parentNode.hasChildNodes()) {
+    //     parentNode.removeChild(domNode);
+    //   }
+    //   if (currentEffect.sibling) {
+    //     currentEffect = currentEffect.sibling;
+    //     while (currentEffect.tag === CLASS_COMPONENT) {
+    //       currentEffect = currentEffect.child;
+    //     }
+    //   } else {
+    //     f = false;
+    //   }
+    // }
+
+    // if (currentEffect.tag === HOST_COMPONENT) {
+    //   updateDomProperties(domNode, {}, currentEffect.props);
+    //   parentNode.appendChild(domNode);
+    // }
+
+    // const domNodeToAppend = parentNode.stateNode;
+
+    try {
+      parentNode.removeChild(domNode);
+    } catch (e) {}
   }
 };
 
 const commitAllWork = rootFiber => {
   rootFiber.effects.forEach(commitWork);
-
-  // console.log(rootFiber.effects);
 
   // saves the reference of itself in a field, so
   // the alternate tree can be set up later
@@ -108,6 +153,16 @@ function reconcileChildrenArray(fiberBeingExecuted, newChildElements) {
     : null;
   const numberOfElements = elements.length;
 
+  const elementTag = element =>
+    typeof element.type === 'string' ? HOST_COMPONENT : CLASS_COMPONENT;
+
+  const createStateNode = (fiber, element) =>
+    elementTag(element) === HOST_COMPONENT
+      ? element.type === 'TEXT ELEMENT'
+        ? document.createTextNode(element.props.nodeValue)
+        : document.createElement(element.type)
+      : createInstance(fiber);
+
   while (index < numberOfElements || alternateFiber) {
     const element = elements[index];
 
@@ -121,7 +176,7 @@ function reconcileChildrenArray(fiberBeingExecuted, newChildElements) {
 
     if (element && alternateFiber && alternateFiber.type === element.type) {
       fiberToCreate = {
-        tag: HOST_COMPONENT,
+        tag: elementTag(element),
         type: element.type,
         parent: fiberBeingExecuted,
         child: null,
@@ -137,21 +192,19 @@ function reconcileChildrenArray(fiberBeingExecuted, newChildElements) {
 
     if (element && alternateFiber && alternateFiber.type !== element.type) {
       fiberToCreate = {
-        tag: HOST_COMPONENT,
+        tag: elementTag(element),
         type: element.type,
         parent: fiberBeingExecuted,
         child: null,
         sibling: null,
         alternate: alternateFiber,
-        stateNode:
-          element.type === 'TEXT ELEMENT'
-            ? document.createTextNode(element.props.nodeValue)
-            : document.createElement(element.type),
         props: element.props,
         partialState: null,
         effectTag: PLACEMENT,
         effects: []
       };
+
+      fiberToCreate.stateNode = createStateNode(fiberToCreate, element);
 
       alternateFiber.effectTag = DELETION;
 
@@ -160,21 +213,19 @@ function reconcileChildrenArray(fiberBeingExecuted, newChildElements) {
 
     if (element && !alternateFiber) {
       fiberToCreate = {
-        tag: HOST_COMPONENT,
+        tag: elementTag(element),
         type: element.type,
         parent: fiberBeingExecuted,
         child: null,
         sibling: null,
         alternate: null,
-        stateNode:
-          element.type === 'TEXT ELEMENT'
-            ? document.createTextNode(element.props.nodeValue)
-            : document.createElement(element.type),
         props: element.props,
         partialState: null,
         effectTag: PLACEMENT,
         effects: []
       };
+
+      fiberToCreate.stateNode = createStateNode(fiberToCreate, element);
     }
 
     if (index == 0) {
@@ -196,8 +247,14 @@ function reconcileChildrenArray(fiberBeingExecuted, newChildElements) {
 }
 
 function beginTask(fiberBeingExecuted) {
-  const newChildElements = fiberBeingExecuted.props.children;
-  reconcileChildrenArray(fiberBeingExecuted, newChildElements);
+  if (fiberBeingExecuted.tag === CLASS_COMPONENT) {
+    const newChildElements = fiberBeingExecuted.stateNode.render();
+
+    reconcileChildrenArray(fiberBeingExecuted, newChildElements);
+  } else {
+    const newChildElements = fiberBeingExecuted.props.children;
+    reconcileChildrenArray(fiberBeingExecuted, newChildElements);
+  }
 }
 
 const completeSubTask = fiberBeingExecuted => {
