@@ -1,6 +1,5 @@
 import uuid from 'uuid';
 
-import { createElement } from './../CreateElement';
 import { effects, fiberTypes, timeLimits } from './../Misc/Consts';
 import { convertValueToArray } from '../Misc/Functions';
 import { updateDomProperties } from '../Diffing/updateDomProps';
@@ -23,6 +22,10 @@ let pendingCommit = null;
 let renderInfo = null;
 
 const commitWork = effect => {
+  if (effect.tag === CLASS_COMPONENT) {
+    effect.stateNode.__fiber = effect;
+  }
+
   if (effect.effectTag === PLACEMENT) {
     let currentParentEffect = effect.parent;
     let currentEffect = effect;
@@ -43,10 +46,14 @@ const commitWork = effect => {
   if (effect.effectTag === UPDATE) {
     const domNode = effect.stateNode;
 
-    if (effect.parent !== effect.alternate.parent) {
+    if (effect.parent.type !== effect.alternate.parent.type) {
       const newParent = effect.parent.stateNode;
 
-      newParent.appendChild(domNode);
+      try {
+        newParent.appendChild(domNode);
+      } catch (e) {
+        console.log(effect);
+      }
     }
 
     updateDomProperties(domNode, effect.alternate.props, effect.props);
@@ -66,29 +73,6 @@ const commitWork = effect => {
 
     const parentNode = currentParentEffect.stateNode;
     const domNode = currentEffect.stateNode;
-
-    // let f = true;
-
-    // while (f) {
-    //   if (parentNode.hasChildNodes()) {
-    //     parentNode.removeChild(domNode);
-    //   }
-    //   if (currentEffect.sibling) {
-    //     currentEffect = currentEffect.sibling;
-    //     while (currentEffect.tag === CLASS_COMPONENT) {
-    //       currentEffect = currentEffect.child;
-    //     }
-    //   } else {
-    //     f = false;
-    //   }
-    // }
-
-    // if (currentEffect.tag === HOST_COMPONENT) {
-    //   updateDomProperties(domNode, {}, currentEffect.props);
-    //   parentNode.appendChild(domNode);
-    // }
-
-    // const domNodeToAppend = parentNode.stateNode;
 
     try {
       parentNode.removeChild(domNode);
@@ -129,14 +113,39 @@ const assignFirstSubtask = () => {
 
   renderInfo = taskToExecute;
 
-  const { from, dom, newProps } = taskToExecute;
+  const { from, dom, newProps, instance, partialState } = taskToExecute;
+
+  if (from === CLASS_COMPONENT) {
+    instance.__fiber.partialState = partialState;
+
+    const getRoot = fiber => {
+      let currentFiber = fiber;
+
+      while (currentFiber.parent) {
+        currentFiber = currentFiber.parent;
+      }
+
+      return currentFiber;
+    };
+
+    const firstTask = {
+      tag: HOST_ROOT,
+      alternate: getRoot(instance.__fiber),
+      stateNode: getRoot(instance.__fiber).stateNode,
+      props: getRoot(instance.__fiber).props,
+      effects: []
+    };
+
+    return firstTask;
+  }
 
   if (from === HOST_ROOT) {
     const firstTask = {
       tag: HOST_ROOT,
       alternate: dom.__rootContainerFiber,
       stateNode: dom,
-      props: newProps
+      props: newProps,
+      effects: []
     };
 
     return firstTask;
@@ -184,7 +193,7 @@ function reconcileChildrenArray(fiberBeingExecuted, newChildElements) {
         alternate: alternateFiber,
         stateNode: alternateFiber.stateNode,
         props: element.props,
-        partialState: null,
+        partialState: alternateFiber.partialState,
         effectTag: UPDATE,
         effects: []
       };
@@ -246,8 +255,18 @@ function reconcileChildrenArray(fiberBeingExecuted, newChildElements) {
   }
 }
 
-function beginTask(fiberBeingExecuted) {
+const beginTask = fiberBeingExecuted => {
   if (fiberBeingExecuted.tag === CLASS_COMPONENT) {
+    fiberBeingExecuted.stateNode.props = fiberBeingExecuted.props;
+
+    if (fiberBeingExecuted.partialState) {
+      fiberBeingExecuted.stateNode.state = Object.assign(
+        {},
+        fiberBeingExecuted.stateNode.state,
+        fiberBeingExecuted.partialState
+      );
+    }
+
     const newChildElements = fiberBeingExecuted.stateNode.render();
 
     reconcileChildrenArray(fiberBeingExecuted, newChildElements);
@@ -255,7 +274,7 @@ function beginTask(fiberBeingExecuted) {
     const newChildElements = fiberBeingExecuted.props.children;
     reconcileChildrenArray(fiberBeingExecuted, newChildElements);
   }
-}
+};
 
 const completeSubTask = fiberBeingExecuted => {
   const { parent, effectTag, effects } = fiberBeingExecuted;
@@ -277,7 +296,7 @@ const completeSubTask = fiberBeingExecuted => {
 };
 
 // takes the subtask and start executing it
-function executeSubTask(fiberBeingExecuted) {
+const executeSubTask = fiberBeingExecuted => {
   // creates possible child fiber with possible siblings
   beginTask(fiberBeingExecuted);
 
@@ -302,9 +321,9 @@ function executeSubTask(fiberBeingExecuted) {
 
     currentFiber = currentFiber.parent;
   }
-}
+};
 
-function workLoop(deadline) {
+const workLoop = deadline => {
   // checks if there are any subtasks left
   // from the previus task
   // if there is nothing to do
@@ -328,7 +347,7 @@ function workLoop(deadline) {
   if (pendingCommit) {
     commitAllWork(pendingCommit);
   }
-}
+};
 
 export const render = (elements, containerDom) => {
   updateQueue.push({
@@ -341,13 +360,13 @@ export const render = (elements, containerDom) => {
   requestIdleCallback(performTask);
 };
 
-function scheduleUpdate(instance, partialState) {
+export const scheduleUpdate = (instance, partialState) => {
   updateQueue.push({
     from: CLASS_COMPONENT,
-    instance: instance,
-    partialState: partialState
+    instance,
+    partialState
   });
   requestIdleCallback(performTask);
-}
+};
 
 export const subscribeToRenderCommit = fn => subscription.subscribe(fn);
