@@ -1,13 +1,13 @@
 const TEXT_ELEMENT = 'TEXT ELEMENT';
 
-export function createDomElement(fiber) {
+export const createDomElement = fiber => {
   const isTextElement = fiber.type === TEXT_ELEMENT;
   const dom = isTextElement
     ? document.createTextNode('')
     : document.createElement(fiber.type);
   updateDomProperties(dom, [], fiber.props);
   return dom;
-}
+};
 
 export const updateDomProperties = (stateNode, oldProps, newProps) => {
   const oldPropsNames = Object.keys(oldProps);
