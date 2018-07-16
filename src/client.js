@@ -8,11 +8,9 @@ const root = document.getElementById('root');
 
 subscribeToRenderCommit(renderInfo => console.log('Rendering is complete!'));
 
-class AnotherComponent extends Component {
-  render = () => {
-    return <div>Nested stuff</div>;
-  };
-}
+const AnotherComponent = () => {
+  return <div>Nested stuff</div>;
+};
 
 class SuperNestedComponent extends Component {
   render() {
