@@ -48,6 +48,10 @@ class Main extends Component {
     visible: false
   };
 
+  shouldComponentUpdate(nextProps, nextState) {
+    return false;
+  }
+
   render() {
     if (!this.state.visible)
       return (

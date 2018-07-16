@@ -257,6 +257,21 @@ function reconcileChildrenArray(fiberBeingExecuted, newChildElements) {
 
 const beginTask = fiberBeingExecuted => {
   if (fiberBeingExecuted.tag === CLASS_COMPONENT) {
+    const currentProps = fiberBeingExecuted.stateNode.props;
+    const currentState = fiberBeingExecuted.stateNode.props;
+
+    const nextProps = fiberBeingExecuted.props;
+    const nextState = Object.assign(
+      {},
+      fiberBeingExecuted.stateNode.state,
+      fiberBeingExecuted.partialState
+    );
+
+    const shouldComponentUpdate = fiberBeingExecuted.stateNode.shouldComponentUpdate(
+      nextProps,
+      nextState
+    );
+
     fiberBeingExecuted.stateNode.props = fiberBeingExecuted.props;
 
     if (fiberBeingExecuted.partialState) {
@@ -267,9 +282,11 @@ const beginTask = fiberBeingExecuted => {
       );
     }
 
-    const newChildElements = fiberBeingExecuted.stateNode.render();
+    if (shouldComponentUpdate || !fiberBeingExecuted.alternate) {
+      const newChildElements = fiberBeingExecuted.stateNode.render();
 
-    reconcileChildrenArray(fiberBeingExecuted, newChildElements);
+      reconcileChildrenArray(fiberBeingExecuted, newChildElements);
+    }
   } else {
     const newChildElements = fiberBeingExecuted.props.children;
     reconcileChildrenArray(fiberBeingExecuted, newChildElements);
