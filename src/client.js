@@ -8,57 +8,63 @@ const root = document.getElementById('root');
 
 subscribeToRenderCommit(renderInfo => console.log('Rendering is complete!'));
 
-const element = (
-  <div style={{ backgroundColor: 'red' }}>
-    <div first={true}>hey</div>
-    <div second={true}>hi</div>
-  </div>
-);
-
-class Another extends Component {
+class AnotherComponent extends Component {
   render = () => {
-    return <div>nested stuff </div>;
+    return <div>Nested stuff</div>;
+  };
+}
+
+class SuperNestedComponent extends Component {
+  render() {
+    return <div>Super nested stuff</div>;
+  }
+}
+
+class NewComponent extends Component {
+  render = () => {
+    return [
+      <div>
+        New Component
+        <SuperNestedComponent />
+        <h1 style={{ fontSize: 59 }}>Under nested stuff</h1>
+      </div>,
+      <button>Array button</button>
+    ];
   };
 }
 
 class Example extends Component {
   render = () => {
-    return <Another />;
-    // return <div>Hello</div>;
+    return (
+      <div>
+        <AnotherComponent />
+        <NewComponent />
+        <div>Easy one</div>
+      </div>
+    );
   };
 }
 
-const classElement = (
-  <div style={{ backgroundColor: 'red' }}>
-    <Example />
-  </div>
-);
+class Main extends Component {
+  state = {
+    visible: false
+  };
 
-render(classElement, root);
+  render() {
+    if (!this.state.visible)
+      return (
+        <div style={{ backgroundColor: 'red' }}>
+          <Example />
+          <button onClick={() => this.setState({ visible: true })}>
+            Switch
+          </button>
+        </div>
+      );
 
-const classElement2 = <div style={{ backgroundColor: 'red' }}>ge</div>;
+    return (
+      <div onClick={() => this.setState({ visible: false })}>Switch back!</div>
+    );
+  }
+}
 
-const otherElement = (
-  <div style={{ backgroundColor: 'red' }}>
-    <button first={true}>hey</button>
-    <button second={true}>hi</button>
-    <button>third</button>
-  </div>
-);
-
-setTimeout(() => {
-  render(classElement2, root);
-}, 2000);
-
-const otherElement2 = (
-  <div style={{ backgroundColor: 'red' }}>
-    <div second={true} onClick={e => console.log(e)}>
-      hi
-    </div>
-    <div style={{ backgroundColor: 'purple' }}>third</div>
-  </div>
-);
-
-// setTimeout(() => {
-//   render(otherElement2, root);
-// }, 4000);
+render(<Main />, root);
