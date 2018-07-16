@@ -1,3 +1,5 @@
+import { scheduleUpdate } from './../Engine/index';
+
 export class Component {
   constructor(props) {
     this.props = props || {};
@@ -5,6 +7,6 @@ export class Component {
   }
 
   setState(partialState) {
-    // scheduleUpdate(this, partialState);
+    scheduleUpdate(this, partialState);
   }
 }
